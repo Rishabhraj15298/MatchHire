@@ -9,9 +9,9 @@ import json
 # Load .env (local) — Streamlit Cloud will use st.secrets
 load_dotenv()
 
-API_KEY = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY")
+API_KEY = os.getenv("GEMINI_API_KEY") or st.secrets["api_keys"]["gemini_api_key"]
 MODEL = "gemini-2.0-flash"
-
+    
 # Streamlit Page Config
 st.set_page_config(
     page_title="Resume Analyzer - MatchHire",
