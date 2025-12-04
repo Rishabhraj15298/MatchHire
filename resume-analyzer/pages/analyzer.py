@@ -21,7 +21,7 @@ st.page_link("home.py", label="⬅️ Back to Home")
 # Helper functions
 def get_response(prompt, text, jd):
     """Generate response from Gemini with prompt + resume + JD"""
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash")
     response = model.generate_content(prompt.format(resume=text, job_desc=jd))
     return response.text
 
