@@ -1,15 +1,18 @@
 import streamlit as st
-import google.generativeai as genai
+import requests
 import os
 from dotenv import load_dotenv
 import PyPDF2 as pdf
 import re
+import json
 
-# Load environment variables and configure API
+# Load .env (local) — Streamlit Cloud will use st.secrets
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
-# Page config
+API_KEY = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY")
+MODEL = "gemini-2.0-flash"
+
+# Streamlit Page Config
 st.set_page_config(
     page_title="Resume Analyzer - MatchHire",
     page_icon="📃",
@@ -18,25 +21,39 @@ st.set_page_config(
 )
 
 st.page_link("home.py", label="⬅️ Back to Home")
-# Helper functions
-def get_response(prompt, text, jd):
-    """Generate response from Gemini with prompt + resume + JD"""
-    model = genai.GenerativeModel("gemini-2.5-flash")
-    response = model.generate_content(prompt.format(resume=text, job_desc=jd))
-    return response.text
 
+# ------------------------ GEMINI REST API CALL ------------------------
+def gemini_generate(prompt):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={API_KEY}"
+
+    payload = {
+        "contents": [
+            {"parts": [{"text": prompt}]}
+        ]
+    }
+
+    headers = {"Content-Type": "application/json"}
+
+    response = requests.post(url, headers=headers, json=payload)
+    data = response.json()
+
+    try:
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+    except:
+        return "❌ Error: No response generated from the AI."
+
+# ------------------------ PDF TEXT EXTRACTOR ------------------------
 def input_pdf_text(file):
-    """Extract text from PDF"""
     reader = pdf.PdfReader(file)
     text = ""
     for page in reader.pages:
         text += str(page.extract_text())
     return text
 
-# Prompts
+# ------------------------ PROMPTS ------------------------
 input_prompt1 = """
-You are an experienced Technical Human Resource Manager. 
-Review the following resume against the provided job description. 
+You are an experienced Technical HR Manager.
+Review the following resume against the provided job description.
 Highlight strengths and weaknesses of the candidate in relation to the role.
 
 Job Description:
@@ -47,7 +64,7 @@ Resume:
 """
 
 input_prompt3 = """
-You are an ATS (Applicant Tracking System) with expertise in resume screening. 
+You are an ATS (Applicant Tracking System) with expertise in resume screening.
 Evaluate the resume against the provided job description.
 
 Tasks:
@@ -62,18 +79,16 @@ Resume:
 {resume}
 """
 
-# Analyzer UI
+# ------------------------ MAIN UI ------------------------
 def show_analyzer():
-    # Custom CSS for dark mode
-    st.markdown(
-        """
+
+    # Dark Theme
+    st.markdown("""
         <style>
         .stApp { background-color: #0a0a0a; color: #e4e4e7; }
         h1, h2, h3, h4, h5, h6, p, label { color: white !important; }
         </style>
-        """,
-        unsafe_allow_html=True
-    )
+    """, unsafe_allow_html=True)
 
     st.title("AI Resume Analyzer")
 
@@ -91,24 +106,28 @@ def show_analyzer():
     with col2:
         submit3 = st.button("Percentage Match (ATS)")
 
-    # Actions
+    # ---- Recruiter Style Review ----
     if submit1:
-        if uploaded_file is not None and jd:
+        if uploaded_file and jd:
             with st.spinner("Analyzing resume..."):
                 pdf_content = input_pdf_text(uploaded_file)
-                response = get_response(input_prompt1, pdf_content, jd)
+                prompt = input_prompt1.format(resume=pdf_content, job_desc=jd)
+                response = gemini_generate(prompt)
+
                 st.subheader("Recruiter-Style Evaluation")
                 st.write(response)
         else:
             st.error("Please upload a resume and paste the job description.")
 
-    elif submit3:
-        if uploaded_file is not None and jd:
+    # ---- ATS MODE ----
+    if submit3:
+        if uploaded_file and jd:
             with st.spinner("Running ATS scan..."):
                 pdf_content = input_pdf_text(uploaded_file)
-                response = get_response(input_prompt3, pdf_content, jd)
+                prompt = input_prompt3.format(resume=pdf_content, job_desc=jd)
+                response = gemini_generate(prompt)
 
-                # Try extracting a percentage score from the response
+                # Extract score using regex
                 match = re.search(r"(\d{1,3})%", response)
                 if match:
                     score = int(match.group(1))
@@ -121,13 +140,12 @@ def show_analyzer():
         else:
             st.error("Please upload a resume and paste the job description.")
 
-    # --- Back to Home Button ---
     st.divider()
-    
 
-# Main
+
 def main():
     show_analyzer()
+
 
 if __name__ == "__main__":
     main()
